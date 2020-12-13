@@ -6,16 +6,18 @@
 #include <fstream>
 #include <string.h>
 
-typedef void (*func_t) (void);
+class Canvas;
 
+typedef void (*func_t) (void);
+typedef void (Canvas::* CanvasMFP) ();
 
 class Button {
 public:
 	const char* name_;
 	RECT rect_;
-	func_t func_;
+	CanvasMFP func_;
 
-	Button(const char* name, RECT rect, func_t func) :
+	Button(const char* name, RECT rect, CanvasMFP func) :
 		name_(name),
 		rect_(rect),
 		func_(func)
@@ -43,7 +45,7 @@ public:
 
 class RectButton : public Button {
 public:
-	RectButton(const char* name, RECT rect, func_t func) :
+	RectButton(const char* name, RECT rect, CanvasMFP func) :
 		Button(name, rect, func) {}
 
 	virtual void draw_button() override {
@@ -65,7 +67,7 @@ public:
 
 class CircleButton : public Button {
 public:
-	CircleButton(const char* name, RECT rect, func_t func) :
+	CircleButton(const char* name, RECT rect, CanvasMFP func) :
 		Button(name, rect, func) {}
 
 	virtual void draw_button() override {
@@ -89,7 +91,7 @@ public:
 
 class Canvas : public RectButton {
 public:
-	Canvas(const char* name, RECT rect, func_t func) :
+	Canvas(const char* name, RECT rect, CanvasMFP func) :
 		RectButton(name, rect, func) {}
 
 	virtual void pressed() override;
@@ -183,8 +185,6 @@ void Canvas::pencil() {
 	}
 }
 
-
-
 int main() {
 	int width = 800, height = 600;
 	txCreateWindow(width, height);
@@ -194,7 +194,7 @@ int main() {
 	Manager manager;
 
 	manager.add(new Canvas("", RECT{ 50, 50, 780, 580 }, NULL));
-	manager.add(new RectButton("clear", RECT{ 10, 10, 60, 60 }, manager.buttons_[0]->draw_button));
+	manager.add(new RectButton("clear", RECT{ 10, 10, 60, 60 }, manager.draw));
 
 	/*
 	manager.add(new RectButton("SIN", RECT{ 100, 480, 300, 520 }, sin));
