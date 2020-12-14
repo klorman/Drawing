@@ -5,19 +5,20 @@
 #include <ctime>
 #include <fstream>
 #include <string.h>
+#include <queue>
 
-class Canvas;
 
 typedef void (*func_t) (void);
-typedef void (Canvas::* CanvasMFP) ();
+
 
 class Button {
 public:
+	size_t mode_ = 0;
 	const char* name_;
 	RECT rect_;
-	CanvasMFP func_;
+	func_t func_;
 
-	Button(const char* name, RECT rect, CanvasMFP func) :
+	Button(const char* name, RECT rect, func_t func) :
 		name_(name),
 		rect_(rect),
 		func_(func)
@@ -45,7 +46,7 @@ public:
 
 class RectButton : public Button {
 public:
-	RectButton(const char* name, RECT rect, CanvasMFP func) :
+	RectButton(const char* name, RECT rect, func_t func) :
 		Button(name, rect, func) {}
 
 	virtual void draw_button() override {
@@ -60,14 +61,18 @@ public:
 		double x = txMouseX(), y = txMouseY();
 
 		if (x >= rect_.left && x <= rect_.right && y >= rect_.top && y <= rect_.bottom) return TRUE;
-
+		
 		return FALSE;
+	}
+
+	virtual void pressed() {
+		func_();
 	}
 };
 
 class CircleButton : public Button {
 public:
-	CircleButton(const char* name, RECT rect, CanvasMFP func) :
+	CircleButton(const char* name, RECT rect, func_t func) :
 		Button(name, rect, func) {}
 
 	virtual void draw_button() override {
@@ -91,17 +96,38 @@ public:
 
 class Canvas : public RectButton {
 public:
-	Canvas(const char* name, RECT rect, CanvasMFP func) :
+	//size_t mode_ = 0;
+
+	Canvas(const char* name, RECT rect, func_t func) :
 		RectButton(name, rect, func) {}
 
 	virtual void pressed() override;
 
 	void pencil();
+	void spray();
+	void fill(COLORREF old_color, std::queue <POINT> points);
 
 };
 
 void Canvas::pressed() {
-	pencil();
+	switch (mode_)
+	{
+	case 1:
+		pencil();
+		break;
+
+	case 2:
+		spray();
+		break;
+
+	case 3:
+		POINT start_pos = txMousePos();
+		std::queue <POINT> points;
+		points.push(start_pos);
+
+		fill(txGetPixel(start_pos.x, start_pos.y), points);
+		break;
+	}
 }
 
 class Manager {
@@ -133,7 +159,7 @@ public:
 void Manager::draw() {
 	txSetFillColor(RGB(40, 40, 40));
 	txClear();
-	
+
 
 	for (size_t button = 0; button < count_; button++)
 		buttons_[button]->draw_button();
@@ -154,6 +180,8 @@ void Manager::run() {
 				}
 	}
 }
+
+Manager manager;
 
 void Canvas::pencil() {
 	double x0 = txMouseX(), y0 = txMouseY(), x1 = 0, y1 = 0;
@@ -185,16 +213,82 @@ void Canvas::pencil() {
 	}
 }
 
+void Canvas::spray() {
+	txSetColor(TX_BLACK);
+	txSetFillColor(TX_BLACK);
+
+	int R = 50;
+
+	while (txMouseButtons() == 1) {
+		int dist = 0 + rand() % (R - 0), angle = 0 + rand() % (360 - 0);
+
+		double x = txMouseX() + dist * cos(angle), y = txMouseY() + dist * sin(angle);
+
+		if (x - 3 > rect_.left && x + 3 < rect_.right && y - 3 > rect_.top && y + 3 < rect_.bottom)
+			txCircle(x, y, 2);
+
+		txSleep();
+	}
+}
+
+void Canvas::fill(COLORREF old_color, std::queue <POINT> points) {
+	std::cout << points.size() << "\n";
+
+	if (points.size() == 0) return; 
+
+	POINT point = points.front();
+	points.pop();
+
+	COLORREF color_of_pixel = txGetPixel(point.x, point.y);
+
+	//std::cout << (color_of_pixel == old_color) << "\n";
+
+	if (color_of_pixel != old_color || point.x == rect_.left || point.x == rect_.right || point.y == rect_.bottom || point.y == rect_.top )
+		return;
+
+
+	//std::cout << x << " " << y << "\n";
+
+	txSetPixel(point.x, point.y, TX_GREEN);
+
+	points.push(POINT{ point.x + 1, point.y });
+	points.push(POINT{ point.x - 1, point.y });
+	points.push(POINT{ point.x, point.y + 1 });
+	points.push(POINT{ point.x, point.y - 1 });
+
+	fill(old_color, points);
+
+}
+
+void clear() {
+	txSetFillColor(TX_WHITE);
+	txRectangle(50, 50, 780, 580);
+}
+
+void pencil_mode() {
+	manager.buttons_[0]->mode_ = 1;
+}
+
+void spray_mode() {
+	manager.buttons_[0]->mode_ = 2;
+}
+
+void fill_mode() {
+	manager.buttons_[0]->mode_ = 3;
+}
+
 int main() {
+	srand(time(0));
+
 	int width = 800, height = 600;
 	txCreateWindow(width, height);
 	txSetColor(TX_BLACK);
 
-
-	Manager manager;
-
 	manager.add(new Canvas("", RECT{ 50, 50, 780, 580 }, NULL));
-	manager.add(new RectButton("clear", RECT{ 10, 10, 60, 60 }, manager.draw));
+	manager.add(new RectButton("clear", RECT{ 10, 10, 50, 40 }, clear));
+	manager.add(new RectButton("pen", RECT{ 10, 60, 30, 80 }, pencil_mode));
+	manager.add(new RectButton("spray", RECT{ 10, 90, 30, 110 }, spray_mode));
+	manager.add(new RectButton("fill", RECT{ 10, 120, 30, 140 }, fill_mode));
 
 	/*
 	manager.add(new RectButton("SIN", RECT{ 100, 480, 300, 520 }, sin));
@@ -204,7 +298,7 @@ int main() {
 	*/
 
 	manager.draw();
-
+	
 	manager.run();
 
 	txDisableAutoPause();
