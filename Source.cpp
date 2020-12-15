@@ -8,6 +8,8 @@
 #include <queue>
 
 
+RGBQUAD* Video_memory = txVideoMemory();
+
 typedef void (*func_t) (void);
 
 
@@ -50,6 +52,7 @@ public:
 		Button(name, rect, func) {}
 
 	virtual void draw_button() override {
+		txSetColor(TX_BLACK);
 		txSetFillColor(TX_WHITE);
 		txRectangle(rect_.left, rect_.top, rect_.right, rect_.bottom);
 
@@ -95,7 +98,11 @@ public:
 
 
 class Canvas : public RectButton {
+private:
+	
+
 public:
+	size_t size_ = 50;
 	//size_t mode_ = 0;
 
 	Canvas(const char* name, RECT rect, func_t func) :
@@ -178,6 +185,21 @@ void Manager::run() {
 					//draw();
 					buttons_[button]->pressed();
 				}
+
+		if (txGetAsyncKeyState(VK_MENU)) {
+			if (txMouseButtons() == 2) {
+				double x0 = txMouseX();
+				size_t old_size = ((Canvas*)buttons_[0])->size_;
+
+				while (txGetAsyncKeyState(VK_MENU) && txMouseButtons() == 2) {
+					txSleep();
+					
+					((Canvas*)buttons_[0])->size_ = MIN(MAX(old_size + txMouseX() - x0, 1), 99);
+				}
+			}
+		}
+
+		txSleep();
 	}
 }
 
@@ -185,6 +207,8 @@ Manager manager;
 
 void Canvas::pencil() {
 	double x0 = txMouseX(), y0 = txMouseY(), x1 = 0, y1 = 0;
+
+	txSetColor(txGetColor(), size_);
 
 	while (txMouseButtons() == 1) {
 		txSleep();
@@ -214,25 +238,24 @@ void Canvas::pencil() {
 }
 
 void Canvas::spray() {
-	txSetColor(TX_BLACK);
-	txSetFillColor(TX_BLACK);
-
-	int R = 50;
+	txSetFillColor(txGetColor());
 
 	while (txMouseButtons() == 1) {
-		int dist = 0 + rand() % (R - 0), angle = 0 + rand() % (360 - 0);
+		int dist = 0 + rand() % (size_ - 0), angle = 0 + rand() % (360 - 0);
 
 		double x = txMouseX() + dist * cos(angle), y = txMouseY() + dist * sin(angle);
 
-		if (x - 3 > rect_.left && x + 3 < rect_.right && y - 3 > rect_.top && y + 3 < rect_.bottom)
-			txCircle(x, y, 2);
+		double R = MAX(size_ * 1. / 20, 1);
 
-		txSleep();
+		if (x - R > rect_.left && x + R < rect_.right && y - R > rect_.top && y + R < rect_.bottom)
+			txCircle(x, y, R);
+
+		Sleep(8);
 	}
 }
 
 void Canvas::fill(COLORREF old_color, std::queue <POINT> points) {
-	std::cout << points.size() << "\n";
+	//std::cout << points.size() << "\n";
 
 	if (points.size() == 0) return; 
 
@@ -241,10 +264,10 @@ void Canvas::fill(COLORREF old_color, std::queue <POINT> points) {
 
 	COLORREF color_of_pixel = txGetPixel(point.x, point.y);
 
-	//std::cout << (color_of_pixel == old_color) << "\n";
+	 //std::cout << (color_of_pixel == old_color) << "\n";
 
-	if (color_of_pixel != old_color || point.x == rect_.left || point.x == rect_.right || point.y == rect_.bottom || point.y == rect_.top )
-		return;
+	if (color_of_pixel != old_color || point.x == rect_.left || point.x == rect_.right || point.y == rect_.bottom || point.y == rect_.top) 
+		fill(old_color, points);
 
 
 	//std::cout << x << " " << y << "\n";
@@ -260,9 +283,207 @@ void Canvas::fill(COLORREF old_color, std::queue <POINT> points) {
 
 }
 
+//=======================================================//
+typedef struct RgbColor
+{
+	unsigned char r;
+	unsigned char g;
+	unsigned char b;
+} RgbColor;
+
+typedef struct HsvColor
+{
+	unsigned char h;
+	unsigned char s;
+	unsigned char v;
+} HsvColor;
+
+RgbColor HsvToRgb(HsvColor hsv)
+{
+	RgbColor rgb;
+	unsigned char region, remainder, p, q, t;
+
+	if (hsv.s == 0)
+	{
+		rgb.r = hsv.v;
+		rgb.g = hsv.v;
+		rgb.b = hsv.v;
+		return rgb;
+	}
+
+	region = hsv.h / 43;
+	remainder = (hsv.h - (region * 43)) * 6;
+
+	p = (hsv.v * (255 - hsv.s)) >> 8;
+	q = (hsv.v * (255 - ((hsv.s * remainder) >> 8))) >> 8;
+	t = (hsv.v * (255 - ((hsv.s * (255 - remainder)) >> 8))) >> 8;
+
+	switch (region)
+	{
+	case 0:
+		rgb.r = hsv.v; rgb.g = t; rgb.b = p;
+		break;
+	case 1:
+		rgb.r = q; rgb.g = hsv.v; rgb.b = p;
+		break;
+	case 2:
+		rgb.r = p; rgb.g = hsv.v; rgb.b = t;
+		break;
+	case 3:
+		rgb.r = p; rgb.g = q; rgb.b = hsv.v;
+		break;
+	case 4:
+		rgb.r = t; rgb.g = p; rgb.b = hsv.v;
+		break;
+	default:
+		rgb.r = hsv.v; rgb.g = p; rgb.b = q;
+		break;
+	}
+
+	return rgb;
+}
+
+HsvColor RgbToHsv(RgbColor rgb)
+{
+	HsvColor hsv;
+	unsigned char rgbMin, rgbMax;
+
+	rgbMin = rgb.r < rgb.g ? (rgb.r < rgb.b ? rgb.r : rgb.b) : (rgb.g < rgb.b ? rgb.g : rgb.b);
+	rgbMax = rgb.r > rgb.g ? (rgb.r > rgb.b ? rgb.r : rgb.b) : (rgb.g > rgb.b ? rgb.g : rgb.b);
+
+	hsv.v = rgbMax;
+	if (hsv.v == 0)
+	{
+		hsv.h = 0;
+		hsv.s = 0;
+		return hsv;
+	}
+
+	hsv.s = 255 * long(rgbMax - rgbMin) / hsv.v;
+	if (hsv.s == 0)
+	{
+		hsv.h = 0;
+		return hsv;
+	}
+
+	if (rgbMax == rgb.r)
+		hsv.h = 0 + 43 * (rgb.g - rgb.b) / (rgbMax - rgbMin);
+	else if (rgbMax == rgb.g)
+		hsv.h = 85 + 43 * (rgb.b - rgb.r) / (rgbMax - rgbMin);
+	else
+		hsv.h = 171 + 43 * (rgb.r - rgb.g) / (rgbMax - rgbMin);
+
+	return hsv;
+}
+//=======================================================//
+
+class Palette : public Button {
+public:
+	COLORREF major_color = RGB(0, 0, 0), minor_color = RGB(255, 255, 255);
+	int hue = 0, palette_mode = 0;
+
+	Palette(const char* name, RECT rect, func_t func) :
+		Button(name, rect, func) {}
+
+	void delete_pointer() {
+		txSetColor(RGB(40, 40, 40));
+		txSetFillColor(RGB(40, 40, 40));
+
+		int pos_pointer = rect_.left + hue;
+		txRectangle(pos_pointer - 6, rect_.top - 19, pos_pointer + 6, rect_.top - 9);
+		txRectangle(pos_pointer - 6, rect_.top - 60, pos_pointer + 6, rect_.top - 70);
+	}
+
+	virtual void draw_button() override {
+		txSetColor(TX_BLACK);
+		txSetFillColor(TX_WHITE);
+
+		txRectangle(rect_.left - 1, rect_.top - 60, rect_.right + 1, rect_.top - 18);
+		txRectangle(rect_.left - 1, rect_.top,  rect_.right + 1, rect_.bottom + 1);
+
+		int pos_pointer = rect_.left + hue;
+		POINT pointer1[5] = { {pos_pointer, rect_.top - 20}, {pos_pointer - 5, rect_.top - 15}, {pos_pointer - 5, rect_.top - 10}, {pos_pointer + 5, rect_.top - 10}, {pos_pointer + 5, rect_.top - 15} },
+			  pointer2[5] = { {pos_pointer, rect_.top - 60}, {pos_pointer - 5, rect_.top - 65}, {pos_pointer - 5, rect_.top - 70}, {pos_pointer + 5, rect_.top - 70}, {pos_pointer + 5, rect_.top - 65} };
+		txPolygon(pointer1, 5);
+		txPolygon(pointer2, 5);
+
+		txBegin();
+
+		for (int hue = 255; hue >= 0; hue--) {
+			txSetColor(txHSL2RGB(RGB(hue, 100, 54)));
+			txLine(rect_.left + hue, rect_.top - 20, rect_.left + hue, rect_.top - 60);
+		}
+
+		RgbColor rgb = { 0, 0, 0 };
+
+		for (int brightness = 0; brightness < 256; brightness++) {
+			for (int saturation = 0; saturation < 256; saturation++) {
+				rgb = HsvToRgb(HsvColor{ (unsigned char)hue, (unsigned char)saturation, (unsigned char)brightness });
+
+				RGBQUAD* pixel = &Video_memory[((int)720 - (int)(rect_.bottom - brightness)) * (int)1280 + (int)(rect_.left + saturation)];
+				pixel->rgbRed   = (int)rgb.r;
+				pixel->rgbGreen = (int)rgb.g;
+				pixel->rgbBlue  = (int)rgb.b;
+			}
+		}
+
+		txEnd();
+
+	}
+
+	virtual bool is_mouse_on_button() override {
+		double x = txMouseX(), y = txMouseY();
+
+		if (x >= rect_.left && x <= rect_.right) {
+			if (y >= rect_.top && y <= rect_.bottom) {
+				palette_mode = 0;
+				return TRUE;
+			}
+
+			if (y >= rect_.top - 60 && y <= rect_.top - 20) {
+				palette_mode = 1;
+				return TRUE;
+			}
+		}
+
+		return FALSE;
+	}
+
+	virtual void pressed() override;
+};
+
+void Palette::pressed() {
+	//std::cout << 1 << "\n";
+	if (palette_mode == 1) {
+		delete_pointer();
+
+		hue = txMouseX() - (rect_.left);
+		draw_button();
+	}
+
+	else {
+		txSetColor(txGetPixel(txMouseX(), txMouseY()));
+	}
+}
+
+class Color_button : public RectButton {
+public:
+	COLORREF color_ = RGB(0, 0, 0);
+
+	Color_button(const char* name, RECT rect, func_t func) :
+		RectButton(name, rect, func) {}
+
+	virtual void draw_button() override {
+		txSetColor(TX_BLACK);
+		txRectangle(rect_.left, rect_.top, rect_.right, rect_.bottom);
+
+	}
+};
+
+
+
 void clear() {
-	txSetFillColor(TX_WHITE);
-	txRectangle(50, 50, 780, 580);
+	manager.buttons_[0]->draw_button(); 
 }
 
 void pencil_mode() {
@@ -280,15 +501,18 @@ void fill_mode() {
 int main() {
 	srand(time(0));
 
-	int width = 800, height = 600;
+	int width = 1280, height = 720;
 	txCreateWindow(width, height);
 	txSetColor(TX_BLACK);
 
-	manager.add(new Canvas("", RECT{ 50, 50, 780, 580 }, NULL));
+	Video_memory = txVideoMemory();
+
+	manager.add(new Canvas("", RECT{ 50, 50, width - 296, height - 20 }, NULL));
 	manager.add(new RectButton("clear", RECT{ 10, 10, 50, 40 }, clear));
 	manager.add(new RectButton("pen", RECT{ 10, 60, 30, 80 }, pencil_mode));
 	manager.add(new RectButton("spray", RECT{ 10, 90, 30, 110 }, spray_mode));
 	manager.add(new RectButton("fill", RECT{ 10, 120, 30, 140 }, fill_mode));
+	manager.add(new Palette("", RECT{ width - 276, height - 276, width - 20, height - 20 }, NULL));
 
 	/*
 	manager.add(new RectButton("SIN", RECT{ 100, 480, 300, 520 }, sin));
