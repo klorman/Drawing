@@ -5,8 +5,8 @@
 #include <ctime>
 #include <fstream>
 #include <string.h>
-#include <queue>
 
+#pragma comment(linker, "/STACK:257772160")
 
 RGBQUAD* Video_memory = txVideoMemory();
 
@@ -112,7 +112,7 @@ public:
 
 	void pencil();
 	void spray();
-	void fill(COLORREF old_color, std::queue <POINT> points);
+	void fill(COLORREF old_color, POINT points, POINT prev);
 
 };
 
@@ -128,11 +128,13 @@ void Canvas::pressed() {
 		break;
 
 	case 3:
-		POINT start_pos = txMousePos();
-		std::queue <POINT> points;
-		points.push(start_pos);
+		POINT pixel = txMousePos();
+		
+		COLORREF old_color = txGetPixel(pixel.x, pixel.y);
 
-		fill(txGetPixel(start_pos.x, start_pos.y), points);
+		if (old_color != txGetColor())
+			fill(old_color, pixel, POINT{ NULL, NULL });
+
 		break;
 	}
 }
@@ -254,33 +256,23 @@ void Canvas::spray() {
 	}
 }
 
-void Canvas::fill(COLORREF old_color, std::queue <POINT> points) {
-	//std::cout << points.size() << "\n";
+void Canvas::fill(COLORREF old_color, POINT pixel, POINT prev) {
 
-	if (points.size() == 0) return; 
+	if (old_color == txGetPixel(pixel.x, pixel.y) && 
+		pixel.x > rect_.left && 
+		pixel.x < rect_.right && 
+		pixel.y < rect_.bottom && 
+		pixel.y > rect_.top) {
 
-	POINT point = points.front();
-	points.pop();
+		for (int i = -1; i <= 1; ++i)
+			for (int j = -1; j <= 1; ++j) {
+				if (prev.x != pixel.x || prev.y != pixel.y)
+					fill(old_color, POINT{ pixel.x + i, pixel.y + j }, pixel);
 
-	COLORREF color_of_pixel = txGetPixel(point.x, point.y);
-
-	 //std::cout << (color_of_pixel == old_color) << "\n";
-
-	if (color_of_pixel != old_color || point.x == rect_.left || point.x == rect_.right || point.y == rect_.bottom || point.y == rect_.top) 
-		fill(old_color, points);
-
-
-	//std::cout << x << " " << y << "\n";
-
-	txSetPixel(point.x, point.y, TX_GREEN);
-
-	points.push(POINT{ point.x + 1, point.y });
-	points.push(POINT{ point.x - 1, point.y });
-	points.push(POINT{ point.x, point.y + 1 });
-	points.push(POINT{ point.x, point.y - 1 });
-
-	fill(old_color, points);
-
+				txSetPixel(pixel.x, pixel.y, TX_GREEN);
+			}
+	}
+	return;
 }
 
 //=======================================================//
@@ -513,13 +505,6 @@ int main() {
 	manager.add(new RectButton("spray", RECT{ 10, 90, 30, 110 }, spray_mode));
 	manager.add(new RectButton("fill", RECT{ 10, 120, 30, 140 }, fill_mode));
 	manager.add(new Palette("", RECT{ width - 276, height - 276, width - 20, height - 20 }, NULL));
-
-	/*
-	manager.add(new RectButton("SIN", RECT{ 100, 480, 300, 520 }, sin));
-	manager.add(new CircleButton("COS", RECT{ 175, 540, 225, 590 }, cos));
-	manager.add(new EllipseButton("TAN", RECT{ 500, 480, 700, 520 }, tan));
-	manager.add(new Button("EXP", RECT{ 500, 540, 700, 580 }, exp));
-	*/
 
 	manager.draw();
 	
