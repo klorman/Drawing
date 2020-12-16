@@ -115,6 +115,9 @@ class Button;
 void set_color(size_t size);
 void set_pixel(RgbColor rgb, RECT rect, POINT pos);
 
+void draw_circle(POINT pos, double R);
+void draw_line(POINT pos1, POINT pos2, double R);
+
 
 class Button {
 public:
@@ -182,7 +185,7 @@ public:
 	virtual void draw_button() override {
 		txSetColor(TX_BLACK);
 		txSetFillColor(TX_WHITE);
-		txRectangle(rect_.left, rect_.top, rect_.right, rect_.bottom);
+		txRectangle(rect_.left - 1, rect_.top - 1, rect_.right + 1, rect_.bottom + 1);
 
 		txSetColor(TX_BLACK);
 		txDrawText(rect_.left, rect_.top, rect_.right, rect_.bottom, name_);
@@ -273,7 +276,8 @@ public:
 
 	virtual void pressed() override;
 
-	void draw_circle(POINT pos);
+	//void draw_circle(POINT pos);
+	//void draw_line(POINT pos1, POINT pos2);
 
 	void pencil();
 	void spray();
@@ -285,7 +289,9 @@ void Canvas::pressed() {
 	switch (mode_)
 	{
 	case 0:
-		draw_circle(txMousePos());
+		//txCircle(txMouseX(), txMouseY(), 150);
+		//txEllipse(-150, -150, txMouseX(), txMouseY());
+		//draw_circle(txMousePos());
 		break;
 
 	case 1:
@@ -344,27 +350,84 @@ void Manager::run() {
 				int x0 = txMouseX(), y0 = txMouseY();
 				size_t old_size = ((Canvas*)buttons_[0])->size_;
 
-				HDC save = txCreateCompatibleDC(win_width, win_height);
-				txBitBlt(save, 0, 0, win_width, win_height, txDC(), 0, 0);
+				HDC save = txCreateCompatibleDC(
+					((Canvas*)buttons_[0])->rect_.right  - ((Canvas*)buttons_[0])->rect_.left, 
+					((Canvas*)buttons_[0])->rect_.bottom - ((Canvas*)buttons_[0])->rect_.top);
+				HDC temp = txCreateCompatibleDC(
+					((Canvas*)buttons_[0])->rect_.right  - ((Canvas*)buttons_[0])->rect_.left,
+					((Canvas*)buttons_[0])->rect_.bottom - ((Canvas*)buttons_[0])->rect_.top);
 
-				txSetColor(TX_RED);
-				txSetFillColor(TX_RED);
+				txBitBlt(
+					save, 
+					0,
+					0, 
+					((Canvas*)buttons_[0])->rect_.right  - ((Canvas*)buttons_[0])->rect_.left,
+					((Canvas*)buttons_[0])->rect_.bottom - ((Canvas*)buttons_[0])->rect_.top,
+					txDC(),
+					((Canvas*)buttons_[0])->rect_.left,
+					((Canvas*)buttons_[0])->rect_.top);
+
+				txBitBlt(
+					temp,
+					0,
+					0,
+					((Canvas*)buttons_[0])->rect_.right  - ((Canvas*)buttons_[0])->rect_.left,
+					((Canvas*)buttons_[0])->rect_.bottom - ((Canvas*)buttons_[0])->rect_.top,
+					txDC(),
+					((Canvas*)buttons_[0])->rect_.left,
+					((Canvas*)buttons_[0])->rect_.top);
+
+
+				txSetColor(TX_RED, NULL, temp);
+				txSetFillColor(TX_RED, temp);
 
 				while (txGetAsyncKeyState(VK_MENU) && txMouseButtons() == 2) {
 					txSleep();
 					
 					((Canvas*)buttons_[0])->size_ = MIN(MAX(old_size + txMouseX() - x0, 1), 999);
 
-					txBitBlt(txDC(), 0, 0, win_width, win_height, save, 0, 0);
+					txBitBlt(
+						temp,
+						0,
+						0,
+						((Canvas*)buttons_[0])->rect_.right - ((Canvas*)buttons_[0])->rect_.left,
+						((Canvas*)buttons_[0])->rect_.bottom - ((Canvas*)buttons_[0])->rect_.top,
+						save,
+						0,
+						0);
 
-					txBegin();
-					((Canvas*)buttons_[0])->draw_circle(POINT{ x0, y0 });
-					txEnd();
+					size_t R = ((Canvas*)buttons_[0])->size_ / 2;
+
+					txEllipse(
+						(int)(x0 - R - ((Canvas*)buttons_[0])->rect_.left),
+						(int)(y0 - R - ((Canvas*)buttons_[0])->rect_.top),
+						(int)(x0 + R - ((Canvas*)buttons_[0])->rect_.left),
+						(int)(y0 + R - ((Canvas*)buttons_[0])->rect_.top),
+						temp);
+
+					txBitBlt(
+						txDC(),
+						((Canvas*)buttons_[0])->rect_.left,
+						((Canvas*)buttons_[0])->rect_.top,
+						((Canvas*)buttons_[0])->rect_.right  - ((Canvas*)buttons_[0])->rect_.left,
+						((Canvas*)buttons_[0])->rect_.bottom - ((Canvas*)buttons_[0])->rect_.top,
+						temp,
+						0,
+						0);
 				}
 
-				txBitBlt(txDC(), 0, 0, win_width, win_height, save, 0, 0);
+				txBitBlt(
+					txDC(),
+					((Canvas*)buttons_[0])->rect_.left,
+					((Canvas*)buttons_[0])->rect_.top,
+					((Canvas*)buttons_[0])->rect_.right  - ((Canvas*)buttons_[0])->rect_.left,
+					((Canvas*)buttons_[0])->rect_.bottom - ((Canvas*)buttons_[0])->rect_.top,
+					save,
+					0,
+					0);
 
 				txDeleteDC(save);
+				txDeleteDC(temp);
 			}
 		}
 
@@ -373,32 +436,32 @@ void Manager::run() {
 }
 
 void Canvas::pencil() {
-	double x0 = txMouseX(), y0 = txMouseY(), x1 = 0, y1 = 0;
+	POINT pos1 = txMousePos(), pos2 = { NULL, NULL };
 
 	set_color(size_);
 
 	while (txMouseButtons() == 1) {
 		txSleep();
 
-		x1 = txMouseX();
-		y1 = txMouseY();
+		pos2 = txMousePos();
 
 		if (!is_mouse_on_button()) {
 			while (txMouseButtons() == 1)
 				if (is_mouse_on_button())
 					break;
 
-			x0 = txMouseX();
-			y0 = txMouseY();
+			pos1 = txMousePos();
 
 			continue;
 		}
 
-		if (x0 != x1 || y0 != y1) {
-			txLine(x0, y0, x1, y1);
+		if (pos1.x != pos2.x || pos1.y != pos2.y) {
+			//txLine(pos1.x, pos1.y, pos2.x, pos2.y);
 
-			x0 = x1;
-			y0 = y1;
+			draw_line(pos1, pos2, size_);
+
+			pos1.x = pos2.x;
+			pos1.y = pos2.y;
 		}
 
 	}
@@ -410,12 +473,12 @@ void Canvas::spray() {
 	set_color(R);
 
 	while (txMouseButtons() == 1) {
-		int dist = 0 + rand() % (size_ - 0), angle = 0 + rand() % (360 - 0);
+		int dist = 0 + rand() % (size_ / 2 - 0), angle = 0 + rand() % (360 - 0);
 
-		double x = txMouseX() + dist * cos(angle), y = txMouseY() + dist * sin(angle);
+		long x = txMouseX() + dist * cos(angle), y = txMouseY() + dist * sin(angle);
 
 		if (x - R > rect_.left && x + R < rect_.right && y - R > rect_.top && y + R < rect_.bottom)
-			txCircle(x, y, R);
+			draw_circle(POINT{ x, y }, R);
 
 		Sleep(8);
 	}
@@ -536,8 +599,8 @@ void Palette::pressed() {
 		manager.buttons_[2]->draw_button();
 		manager.buttons_[1]->draw_button();
 
-		/*
-		if (txExtractColor(txRGB2HSL(point_color), TX_LIGHTNESS) >= 54)
+		
+		if (txExtractColor(txRGB2HSL(((ColorButton*)manager.buttons_[1])->color_), TX_LIGHTNESS) >= 54)
 			txSetColor(TX_BLACK);
 
 		else
@@ -545,7 +608,7 @@ void Palette::pressed() {
 
 		txSetFillColor(TX_NULL);
 		txCircle(point.x, point.y, 5);
-		*/
+		
 	}
 }
 
@@ -564,6 +627,7 @@ void set_pixel(RgbColor rgb, RECT rect, POINT pos) {
 	pixel->rgbBlue = (int)rgb.b;
 }
 
+/*
 void Canvas::draw_circle(POINT pos) {
 	for (int x = MAX(pos.x - size_ / 2, rect_.left) + 1; x < MIN(pos.x + size_ / 2, rect_.right) - 1; x++) {
 		for (int y = MAX(pos.y - size_ / 2, rect_.top) + 2; y < MIN(pos.y + size_ / 2, rect_.bottom); y++) {
@@ -572,6 +636,94 @@ void Canvas::draw_circle(POINT pos) {
 				//txSetPixel(x, y, TX_RED);	
 		}
 	}
+}
+
+void Canvas::draw_line(POINT pos1, POINT pos2) {
+	long k = 999, b = 0;
+	if (pos1.x != pos2.x)
+		k = (pos1.y - pos2.y) / (pos1.x - pos2.x);
+
+	b = pos1.y - pos1.x * k;
+
+	for (int x = MIN(pos1.x, pos2.x); x < MAX(pos1.x, pos2.x); x++)
+		draw_circle(POINT{ x, k * x + b });
+}
+*/
+
+void draw_circle(POINT pos, double R) {
+	HDC temp = txCreateCompatibleDC(
+		((Canvas*)manager.buttons_[0])->rect_.right  - ((Canvas*)manager.buttons_[0])->rect_.left,
+		((Canvas*)manager.buttons_[0])->rect_.bottom - ((Canvas*)manager.buttons_[0])->rect_.top);
+
+	txSetColor(((ColorButton*)manager.buttons_[1])->color_, R, temp);
+	txSetFillColor(((ColorButton*)manager.buttons_[1])->color_, temp);
+
+	txBitBlt(
+		temp,
+		0,
+		0,
+		((Canvas*)manager.buttons_[0])->rect_.right  - ((Canvas*)manager.buttons_[0])->rect_.left,
+		((Canvas*)manager.buttons_[0])->rect_.bottom - ((Canvas*)manager.buttons_[0])->rect_.top,
+		txDC(),
+		((Canvas*)manager.buttons_[0])->rect_.left,
+		((Canvas*)manager.buttons_[0])->rect_.top);
+
+	txEllipse(
+		(int)(pos.x - R - ((Canvas*)manager.buttons_[0])->rect_.left),
+		(int)(pos.y - R - ((Canvas*)manager.buttons_[0])->rect_.top),
+		(int)(pos.x + R - ((Canvas*)manager.buttons_[0])->rect_.left),
+		(int)(pos.y + R - ((Canvas*)manager.buttons_[0])->rect_.top),
+		temp);
+
+	txBitBlt(
+		txDC(),
+		((Canvas*)manager.buttons_[0])->rect_.left,
+		((Canvas*)manager.buttons_[0])->rect_.top,
+		((Canvas*)manager.buttons_[0])->rect_.right  - ((Canvas*)manager.buttons_[0])->rect_.left,
+		((Canvas*)manager.buttons_[0])->rect_.bottom - ((Canvas*)manager.buttons_[0])->rect_.top,
+		temp,
+		0,
+		0);
+
+	txDeleteDC(temp);
+}
+
+void draw_line(POINT pos1, POINT pos2, double R) {
+	HDC temp = txCreateCompatibleDC(
+		((Canvas*)manager.buttons_[0])->rect_.right - ((Canvas*)manager.buttons_[0])->rect_.left,
+		((Canvas*)manager.buttons_[0])->rect_.bottom - ((Canvas*)manager.buttons_[0])->rect_.top);
+
+	txSetColor     (((ColorButton*)manager.buttons_[1])->color_, R, temp);
+	txSetFillColor (((ColorButton*)manager.buttons_[1])->color_,    temp);
+
+	txBitBlt(
+		temp,
+		0,
+		0,
+		((Canvas*)manager.buttons_[0])->rect_.right  - ((Canvas*)manager.buttons_[0])->rect_.left,
+		((Canvas*)manager.buttons_[0])->rect_.bottom - ((Canvas*)manager.buttons_[0])->rect_.top,
+		txDC(),
+		((Canvas*)manager.buttons_[0])->rect_.left,
+		((Canvas*)manager.buttons_[0])->rect_.top);
+
+	txLine(
+		(int)(pos1.x - ((Canvas*)manager.buttons_[0])->rect_.left),
+		(int)(pos1.y - ((Canvas*)manager.buttons_[0])->rect_.top),
+		(int)(pos2.x - ((Canvas*)manager.buttons_[0])->rect_.left),
+		(int)(pos2.y - ((Canvas*)manager.buttons_[0])->rect_.top),
+		temp);
+
+	txBitBlt(
+		txDC(),
+		((Canvas*)manager.buttons_[0])->rect_.left,
+		((Canvas*)manager.buttons_[0])->rect_.top,
+		((Canvas*)manager.buttons_[0])->rect_.right - ((Canvas*)manager.buttons_[0])->rect_.left,
+		((Canvas*)manager.buttons_[0])->rect_.bottom - ((Canvas*)manager.buttons_[0])->rect_.top,
+		temp,
+		0,
+		0);
+
+	txDeleteDC(temp);
 }
 
 void clear() {
