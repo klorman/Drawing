@@ -10,6 +10,7 @@
 #pragma comment(linker, "/STACK:257772160")
 
 const int win_width = 1280, win_height = 720;
+const COLORREF background_color = RGB(83, 83, 83);
 
 RGBQUAD* Video_memory = txVideoMemory();
 
@@ -187,8 +188,10 @@ public:
 		txSetFillColor(TX_WHITE);
 		txRectangle(rect_.left - 1, rect_.top - 1, rect_.right + 1, rect_.bottom + 1);
 
-		txSetColor(TX_BLACK);
-		txDrawText(rect_.left, rect_.top, rect_.right, rect_.bottom, name_);
+		if (name_ != NULL) {
+			txSetColor(TX_BLACK);
+			txDrawText(rect_.left, rect_.top, rect_.right, rect_.bottom, name_);
+		}
 	}
 
 	virtual bool is_mouse_on_button() override {
@@ -227,6 +230,44 @@ public:
 	}
 };
 
+class PictureButton : public RectButton {
+public:
+	HDC image_, image_pressed_;
+
+	PictureButton(RECT rect, func_t func, HDC image, HDC image_pressed) :
+		RectButton(NULL, rect, func),
+		image_(image),
+		image_pressed_(image_pressed)
+	{}
+
+	virtual void draw_button() override {
+		if (!image_ || !image_pressed_)
+			txMessageBox("Не могу загрузить картинку");
+
+		if (mode_ == 0)
+			txBitBlt(txDC(), rect_.left, rect_.top, 30, 30, image_, 0, 0);
+		
+		if (mode_ == 1)
+			txBitBlt(txDC(), rect_.left, rect_.top, 30, 30, image_pressed_, 0, 0);
+	}
+
+	virtual void pressed() override {
+		mode_ = 1;
+
+		manager.draw();
+		//draw_button();
+
+		mode_ = 0;
+
+		func_();
+	}
+
+	~PictureButton() {
+		txDeleteDC(image_);
+		txDeleteDC(image_pressed_);
+	}
+};
+
 class ColorButton : public RectButton {
 public:
 	COLORREF color_;
@@ -234,7 +275,7 @@ public:
 	ColorButton(RECT rect, COLORREF color) :
 		color_(color),
 		RectButton(NULL, rect, NULL)
-	{};
+	{}
 
 	virtual void draw_button() override {
 		txSetColor(TX_BLACK);
@@ -271,8 +312,8 @@ public:
 	size_t size_ = 50;
 	//size_t mode_ = 0;
 
-	Canvas(const char* name, RECT rect, func_t func) :
-		RectButton(name, rect, func) {}
+	Canvas(RECT rect) :
+		RectButton(NULL, rect, NULL) {}
 
 	virtual void pressed() override;
 
@@ -321,12 +362,12 @@ void Canvas::pressed() {
 //template <size_t N>
 
 void Manager::draw() {
-	txSetFillColor(RGB(40, 40, 40));
-	txClear();
+	txBegin();
 
-
-	for (size_t button = 1; button <= count_; button++)
+	for (size_t button = 1; button < count_; button++)
 		buttons_[count_ - button]->draw_button();
+
+	txEnd();
 }
 
 void Manager::add(Button* button) {
@@ -335,6 +376,8 @@ void Manager::add(Button* button) {
 }
 
 void Manager::run() {
+	buttons_[0]->draw_button();
+
 	while (!txGetAsyncKeyState(VK_ESCAPE)) {
 		if (txMouseButtons() == 1)
 			for (size_t button = 0; button < count_; button++)
@@ -518,8 +561,8 @@ public:
 		Button(name, rect, func) {}
 
 	void delete_pointer() {
-		txSetColor(RGB(40, 40, 40));
-		txSetFillColor(RGB(40, 40, 40));
+		txSetColor(background_color);
+		txSetFillColor(background_color);
 
 		int pos_pointer = rect_.left + hue;
 		txRectangle(pos_pointer - 6, rect_.top - 19, pos_pointer + 6, rect_.top - 9);
@@ -531,7 +574,7 @@ public:
 		txSetFillColor(TX_WHITE);
 
 		txRectangle(rect_.left - 1, rect_.top - 60, rect_.right + 1, rect_.top - 18);
-		txRectangle(rect_.left - 1, rect_.top,  rect_.right + 1, rect_.bottom + 1);
+		txRectangle(rect_.left - 1, rect_.top - 1,  rect_.right + 1, rect_.bottom + 1);
 
 		int pos_pointer = rect_.left + hue;
 		POINT pointer1[5] = { {pos_pointer, rect_.top - 20}, {pos_pointer - 5, rect_.top - 15}, {pos_pointer - 5, rect_.top - 10}, {pos_pointer + 5, rect_.top - 10}, {pos_pointer + 5, rect_.top - 15} },
@@ -594,13 +637,19 @@ void Palette::pressed() {
 		POINT point = txMousePos();
 		COLORREF color = txGetPixel(point.x, point.y);
 
+		draw_button();
+
 		((ColorButton*)manager.buttons_[1])->color_ = color;
+
+		txBegin();
 
 		manager.buttons_[2]->draw_button();
 		manager.buttons_[1]->draw_button();
 
-		
-		if (txExtractColor(txRGB2HSL(((ColorButton*)manager.buttons_[1])->color_), TX_LIGHTNESS) >= 54)
+		txEnd();
+
+		/*
+		if (txExtractColor(txRGB2HSL(((ColorButton*)manager.buttons_[1])->color_), TX_LIGHTNESS) >= 54) 
 			txSetColor(TX_BLACK);
 
 		else
@@ -608,6 +657,9 @@ void Palette::pressed() {
 
 		txSetFillColor(TX_NULL);
 		txCircle(point.x, point.y, 5);
+
+		txSleep(100);
+		*/
 		
 	}
 }
@@ -750,15 +802,18 @@ int main() {
 
 	Video_memory = txVideoMemory();
 
-	manager.add(new Canvas("", RECT{ 50, 50, win_width - 296, win_height - 20 }, NULL));
+	manager.add(new Canvas(RECT{ 50, 50, win_width - 296, win_height - 20 }));
 	manager.add(new ColorButton(RECT{ 7, win_height - 56, 32, win_height - 31 }, TX_BLACK));
 	manager.add(new ColorButton(RECT{ 18, win_height - 45, 43, win_height - 20 }, TX_WHITE));
 
 	manager.add(new RectButton("clear", RECT{ 10, 10, 50, 40 }, clear));
-	manager.add(new RectButton("pen", RECT{ 10, 60, 30, 80 }, pencil_mode));
-	manager.add(new RectButton("spray", RECT{ 10, 90, 30, 110 }, spray_mode));
-	manager.add(new RectButton("fill", RECT{ 10, 120, 30, 140 }, fill_mode));
+	manager.add(new PictureButton(RECT{ 10, 60, 40, 90 }, pencil_mode, txLoadImage("Resources\\Images\\pencil.bmp"), txLoadImage("Resources\\Images\\pencil_pressed.bmp")));
+	manager.add(new PictureButton(RECT{ 10, 100, 40, 130 }, spray_mode, txLoadImage("Resources\\Images\\spray.bmp"), txLoadImage("Resources\\Images\\spray_pressed.bmp")));
+	manager.add(new PictureButton(RECT{ 10, 140, 40, 170 }, fill_mode, txLoadImage("Resources\\Images\\fill.bmp"), txLoadImage("Resources\\Images\\fill_pressed.bmp")));
 	manager.add(new Palette("", RECT{ win_width - 276, win_height - 276, win_width - 20, win_height - 20 }, NULL));
+
+	txSetFillColor(background_color);
+	txClear();
 
 	manager.draw();
 	
