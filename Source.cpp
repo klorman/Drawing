@@ -854,6 +854,59 @@ void clear() {
 	manager.buttons_[0]->draw_button(); 
 }
 
+void close() {
+	txDisableAutoPause();
+
+	txDeleteDC(temp_HDC);
+
+	exit(0);
+}
+
+void load() {
+	HDC load = txLoadImage("Image.bmp");
+
+	if (!load) {
+		txMessageBox("Файла Image.bmp не существует");
+		return;
+	}
+
+	txBitBlt(
+		txDC(),
+		((Canvas*)manager.buttons_[0])->rect_.left,
+		((Canvas*)manager.buttons_[0])->rect_.top,
+		((Canvas*)manager.buttons_[0])->rect_.right  - ((Canvas*)manager.buttons_[0])->rect_.left,
+		((Canvas*)manager.buttons_[0])->rect_.bottom - ((Canvas*)manager.buttons_[0])->rect_.top,
+		load);
+
+	txDeleteDC(load);
+}
+
+void save() {
+	HDC save = txCreateCompatibleDC(
+		((Canvas*)manager.buttons_[0])->rect_.right  - ((Canvas*)manager.buttons_[0])->rect_.left,
+		((Canvas*)manager.buttons_[0])->rect_.bottom - ((Canvas*)manager.buttons_[0])->rect_.top);
+
+	txBitBlt(
+		save,
+		0,
+		0,
+		((Canvas*)manager.buttons_[0])->rect_.right  - ((Canvas*)manager.buttons_[0])->rect_.left,
+		((Canvas*)manager.buttons_[0])->rect_.bottom - ((Canvas*)manager.buttons_[0])->rect_.top,
+		txDC(),
+		((Canvas*)manager.buttons_[0])->rect_.left,
+		((Canvas*)manager.buttons_[0])->rect_.top);
+
+	txSaveImage("Image.bmp", save);
+
+	txDeleteDC(save);
+}
+
+void save_and_close() {
+	save();
+
+	close();
+}
+
 void pencil_mode() {
 	manager.buttons_[0]->mode_ = 1;
 }
@@ -883,13 +936,16 @@ int main() {
 	manager.add      (new PictureButton      (RECT{ 10, 140, 40, 170 }, fill_mode,   txLoadImage("Resources\\Images\\fill.bmp"),   txLoadImage("Resources\\Images\\fill_pressed.bmp")));
 	manager.add      (new Palette            (RECT{ win_width - 276, win_height - 276, win_width - 20, win_height - 20 }));
 
-	manager.add      (new MenuButton("Файл",     RECT{ 0, 0, 50, 20 }));
+	manager.add      (new MenuButton("Файл",              RECT{ 0, 0, 50, 20 }));
 
+	menu_manager.add (new Button(NULL,                    RECT{ 0, 0, 0, 0 }, NULL));
+	menu_manager.add (new RectButton("Очистить",          RECT{ 0, 20, 150, 40 },   clear));
+	menu_manager.add (new RectButton("Загрузить",         RECT{ 0, 40, 150, 60 },   load));
+	menu_manager.add (new RectButton("Сохранить",         RECT{ 0, 60, 150, 80 },   save));
+	menu_manager.add (new RectButton("Сохранить и выйти", RECT{ 0, 80, 150, 100 },  save_and_close));
+	menu_manager.add (new RectButton("Выход",             RECT{ 0, 100, 150, 120 }, close));
 
-	menu_manager.add (new Button(NULL,           RECT{ 0, 0, 0, 0 }, NULL));
-	menu_manager.add (new RectButton("Очистить", RECT{ 0, 20, 150, 40 }, clear));
-
-	menu_manager.add (new Button(NULL,           RECT{ 1, 1, win_width - 3, win_height - 3 }, NULL));
+	menu_manager.add (new Button(NULL,                    RECT{ 1, 1, win_width - 3, win_height - 3 }, NULL));
 
 	txSetFillColor(background_color);
 	txClear();
