@@ -12,10 +12,11 @@
 const int win_width = 1280, win_height = 720;
 const COLORREF background_color = RGB(83, 83, 83);
 
+HDC temp_HDC = txCreateCompatibleDC(win_width, win_height);
+
 RGBQUAD* Video_memory = txVideoMemory();
 
 typedef void (*func_t) (void);
-
 
 //=======================================================//
 typedef struct RgbColor
@@ -134,22 +135,24 @@ public:
 	{};
 
 	virtual void draw_button() {
+		/*
 		txSetColor(TX_RED);
 		txLine(rect_.left, rect_.top, rect_.right, rect_.bottom);
 		txLine(rect_.left, rect_.bottom, rect_.right, rect_.top);
 		txSetColor(TX_WHITE);
+		*/
 	}
 
 	virtual bool is_mouse_on_button() {
 		double x = txMouseX(), y = txMouseY();
 
-		if (x == rect_.right + 0.5 * (rect_.right - rect_.left) && y == rect_.top + 0.5 * (rect_.bottom - rect_.top)) return TRUE;
+		if (x >= rect_.left && x <= rect_.right && y >= rect_.top && y <= rect_.bottom) return TRUE;
 
 		return FALSE;
 	}
 
 	virtual void pressed() {
-		std::cout << "Button is pressed!";
+		//std::cout << "Button is pressed!";
 	};
 };
 
@@ -168,7 +171,7 @@ public:
 
 	void add(Button* button);
 	void draw();
-	void run();
+	void run(HDC DC);
 
 	~Manager() {
 		for (size_t button = 0; button < count_; button++)
@@ -177,6 +180,7 @@ public:
 };
 
 Manager manager;
+Manager menu_manager;
 
 class RectButton : public Button {
 public:
@@ -190,20 +194,14 @@ public:
 
 		if (name_ != NULL) {
 			txSetColor(TX_BLACK);
+			txSetTextAlign(TA_LEFT);
 			txDrawText(rect_.left, rect_.top, rect_.right, rect_.bottom, name_);
 		}
 	}
 
-	virtual bool is_mouse_on_button() override {
-		double x = txMouseX(), y = txMouseY();
-
-		if (x >= rect_.left && x <= rect_.right && y >= rect_.top && y <= rect_.bottom) return TRUE;
-		
-		return FALSE;
-	}
-
 	virtual void pressed() {
-		func_();
+		if (func_ != NULL)
+			func_();
 	}
 };
 
@@ -229,6 +227,8 @@ public:
 		return FALSE;
 	}
 };
+
+//=======================================================//
 
 class PictureButton : public RectButton {
 public:
@@ -304,6 +304,24 @@ public:
 	}
 };
 
+class MenuButton : public RectButton {
+public:
+
+	MenuButton(const char* name, RECT rect) :
+		RectButton(name, rect, NULL) {}
+
+	virtual void pressed() override {
+		txBitBlt(temp_HDC, 0, 0, win_width, win_height, txDC());
+
+		while (txMouseButtons() == 1)
+			txSleep();
+
+		menu_manager.draw();
+
+		menu_manager.run(temp_HDC);
+	}
+};
+
 class Canvas : public RectButton {
 private:
 	
@@ -358,6 +376,42 @@ void Canvas::pressed() {
 	}
 }
 
+//=======================================================//
+/*
+class History {
+private:
+	static const size_t Number_of_DCs = 10;
+
+public:
+	HDC* DCs_[Number_of_DCs] = {};
+	size_t count_ = 0;
+
+	History() {
+		for (size_t DC = 0; DC < Number_of_DCs; DC++)
+			* DCs_[DC] = txCreateCompatibleDC(
+			((Canvas*)manager.buttons_[0])->rect_.right - ((Canvas*)manager.buttons_[0])->rect_.left,
+				((Canvas*)manager.buttons_[0])->rect_.bottom - ((Canvas*)manager.buttons_[0])->rect_.top);
+	}
+
+	void add() {
+		txBitBlt(
+			*DCs_[count_],
+			0,
+			0,
+			((Canvas*)manager.buttons_[0])->rect_.right - ((Canvas*)manager.buttons_[0])->rect_.left,
+			((Canvas*)manager.buttons_[0])->rect_.bottom - ((Canvas*)manager.buttons_[0])->rect_.top,
+			txDC(),
+			((Canvas*)manager.buttons_[0])->rect_.left,
+			((Canvas*)manager.buttons_[0])->rect_.top);
+
+		count_ = (count_ + 1) % 9;
+	}
+};
+
+History history;
+*/
+//=======================================================//
+
 
 //template <size_t N>
 
@@ -375,21 +429,31 @@ void Manager::add(Button* button) {
 	count_++;
 }
 
-void Manager::run() {
-	buttons_[0]->draw_button();
+void Manager::run(HDC DC) {
+	if (DC == NULL)
+		manager.buttons_[0]->draw_button();
 
-	while (!txGetAsyncKeyState(VK_ESCAPE)) {
+	bool test = TRUE;
+
+	while (!txGetAsyncKeyState(VK_ESCAPE) && test) {
 		if (txMouseButtons() == 1)
+
 			for (size_t button = 0; button < count_; button++)
 				if (buttons_[button]->is_mouse_on_button()) {
 					//draw();
+
+					if (DC != NULL) {
+						txBitBlt(txDC(), 0, 0, win_width, win_height, temp_HDC);
+						test = FALSE;
+					}
+						
 					buttons_[button]->pressed();
 
 					break;
 				}
 
 		if (txGetAsyncKeyState(VK_MENU)) {
-			if (txMouseButtons() == 2) {
+			if (txMouseButtons() == 2 && buttons_[0]->is_mouse_on_button()) {
 				int x0 = txMouseX(), y0 = txMouseY();
 				size_t old_size = ((Canvas*)buttons_[0])->size_;
 
@@ -478,6 +542,8 @@ void Manager::run() {
 	}
 }
 
+//=======================================================//
+
 void Canvas::pencil() {
 	POINT pos1 = txMousePos(), pos2 = { NULL, NULL };
 
@@ -552,13 +618,15 @@ void Canvas::fill(COLORREF old_color, POINT pos, POINT prev) {
 	return;
 }
 
+//=======================================================//
+
 class Palette : public Button {
 public:
 	COLORREF major_color = RGB(0, 0, 0), minor_color = RGB(255, 255, 255);
 	int hue = 0, palette_mode = 0;
 
-	Palette(const char* name, RECT rect, func_t func) :
-		Button(name, rect, func) {}
+	Palette(RECT rect) :
+		Button(NULL, rect, NULL) {}
 
 	void delete_pointer() {
 		txSetColor(background_color);
@@ -664,6 +732,8 @@ void Palette::pressed() {
 	}
 }
 
+//=======================================================//
+
 void set_color(size_t size) {
 	COLORREF color = ((ColorButton*)manager.buttons_[1])->color_;
 
@@ -678,6 +748,8 @@ void set_pixel(RgbColor rgb, RECT rect, POINT pos) {
 	pixel->rgbGreen = (int)rgb.g;
 	pixel->rgbBlue = (int)rgb.b;
 }
+
+//=======================================================//
 
 /*
 void Canvas::draw_circle(POINT pos) {
@@ -802,23 +874,31 @@ int main() {
 
 	Video_memory = txVideoMemory();
 
-	manager.add(new Canvas(RECT{ 50, 50, win_width - 296, win_height - 20 }));
-	manager.add(new ColorButton(RECT{ 7, win_height - 56, 32, win_height - 31 }, TX_BLACK));
-	manager.add(new ColorButton(RECT{ 18, win_height - 45, 43, win_height - 20 }, TX_WHITE));
+	manager.add      (new Canvas             (RECT{ 50, 50, win_width - 296, win_height - 20 }));
+	manager.add      (new ColorButton        (RECT{ 7,  win_height - 56, 32, win_height - 31 }, TX_BLACK));
+	manager.add      (new ColorButton        (RECT{ 18, win_height - 45, 43, win_height - 20 }, TX_WHITE));
 
-	manager.add(new RectButton("clear", RECT{ 10, 10, 50, 40 }, clear));
-	manager.add(new PictureButton(RECT{ 10, 60, 40, 90 }, pencil_mode, txLoadImage("Resources\\Images\\pencil.bmp"), txLoadImage("Resources\\Images\\pencil_pressed.bmp")));
-	manager.add(new PictureButton(RECT{ 10, 100, 40, 130 }, spray_mode, txLoadImage("Resources\\Images\\spray.bmp"), txLoadImage("Resources\\Images\\spray_pressed.bmp")));
-	manager.add(new PictureButton(RECT{ 10, 140, 40, 170 }, fill_mode, txLoadImage("Resources\\Images\\fill.bmp"), txLoadImage("Resources\\Images\\fill_pressed.bmp")));
-	manager.add(new Palette("", RECT{ win_width - 276, win_height - 276, win_width - 20, win_height - 20 }, NULL));
+	manager.add      (new PictureButton      (RECT{ 10, 60, 40, 90 },   pencil_mode, txLoadImage("Resources\\Images\\pencil.bmp"), txLoadImage("Resources\\Images\\pencil_pressed.bmp")));
+	manager.add      (new PictureButton      (RECT{ 10, 100, 40, 130 }, spray_mode,  txLoadImage("Resources\\Images\\spray.bmp"),  txLoadImage("Resources\\Images\\spray_pressed.bmp")));
+	manager.add      (new PictureButton      (RECT{ 10, 140, 40, 170 }, fill_mode,   txLoadImage("Resources\\Images\\fill.bmp"),   txLoadImage("Resources\\Images\\fill_pressed.bmp")));
+	manager.add      (new Palette            (RECT{ win_width - 276, win_height - 276, win_width - 20, win_height - 20 }));
+
+	manager.add      (new MenuButton("Файл",     RECT{ 0, 0, 50, 20 }));
+
+
+	menu_manager.add (new Button(NULL,           RECT{ 0, 0, 0, 0 }, NULL));
+	menu_manager.add (new RectButton("Очистить", RECT{ 0, 20, 150, 40 }, clear));
+
+	menu_manager.add (new Button(NULL,           RECT{ 1, 1, win_width - 3, win_height - 3 }, NULL));
 
 	txSetFillColor(background_color);
 	txClear();
 
 	manager.draw();
 	
-	manager.run();
+	manager.run(NULL);
 
 	txDisableAutoPause();
 
+	txDeleteDC(temp_HDC);
 }
