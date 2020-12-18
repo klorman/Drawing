@@ -12,8 +12,6 @@
 const int win_width = 1280, win_height = 720;
 const COLORREF background_color = RGB(83, 83, 83);
 
-HDC temp_HDC = txCreateCompatibleDC(win_width, win_height);
-
 RGBQUAD* Video_memory = txVideoMemory();
 
 typedef void (*func_t) (void);
@@ -114,11 +112,11 @@ HsvColor RgbToHsv(RgbColor rgb)
 
 class Button;
 
-void set_color(size_t size);
+void set_color(size_t size,	size_t color_number = 1);
 void set_pixel(RgbColor rgb, RECT rect, POINT pos);
 
 void draw_circle(POINT pos, double R);
-void draw_line(POINT pos1, POINT pos2, double R);
+void draw_line(POINT pos1, POINT pos2, double R, size_t color_number);
 
 
 class Button {
@@ -311,14 +309,16 @@ public:
 		RectButton(name, rect, NULL) {}
 
 	virtual void pressed() override {
-		txBitBlt(temp_HDC, 0, 0, win_width, win_height, txDC());
+		HDC temp_DC = txCreateCompatibleDC(win_width, win_height);
+
+		txBitBlt(temp_DC, 0, 0, win_width, win_height, txDC());
 
 		while (txMouseButtons() == 1)
 			txSleep();
 
 		menu_manager.draw();
 
-		menu_manager.run(temp_HDC);
+		menu_manager.run(temp_DC);
 	}
 };
 
@@ -338,9 +338,10 @@ public:
 	//void draw_circle(POINT pos);
 	//void draw_line(POINT pos1, POINT pos2);
 
-	void pencil();
+	void pencil(size_t color_number = 1);
 	void spray();
-	void fill(COLORREF old_color, POINT pos, POINT prev);
+	bool fill(COLORREF old_color, POINT pos, POINT prev);
+	void stamp(HDC DC);
 
 };
 
@@ -355,7 +356,10 @@ void Canvas::pressed() {
 
 	case 1:
 		//std::cout << "pencil\n";
+	{
+		//set_color(size_);
 		pencil();
+	}
 		break;
 
 	case 2:
@@ -365,14 +369,30 @@ void Canvas::pressed() {
 
 	case 3:
 		//std::cout << "fill\n";
+	{
 		POINT pixel = txMousePos();
-		
+
 		COLORREF old_color = txGetPixel(pixel.x, pixel.y);
 
 		if (old_color != ((ColorButton*)manager.buttons_[1])->color_)
 			fill(old_color, pixel, POINT{ NULL, NULL });
-
+	}
 		break;
+
+	case 4:
+	{
+		HDC temp = txCreateCompatibleDC(size_, size_);
+
+		stamp(temp);
+
+		txDeleteDC(temp);
+	}
+		break;
+
+	case 5:
+		pencil(2);
+		break;
+
 	}
 }
 
@@ -443,7 +463,7 @@ void Manager::run(HDC DC) {
 					//draw();
 
 					if (DC != NULL) {
-						txBitBlt(txDC(), 0, 0, win_width, win_height, temp_HDC);
+						txBitBlt(txDC(), 0, 0, win_width, win_height, DC);
 						test = FALSE;
 					}
 						
@@ -544,10 +564,8 @@ void Manager::run(HDC DC) {
 
 //=======================================================//
 
-void Canvas::pencil() {
+void Canvas::pencil(size_t color_number) {
 	POINT pos1 = txMousePos(), pos2 = { NULL, NULL };
-
-	set_color(size_);
 
 	while (txMouseButtons() == 1) {
 		txSleep();
@@ -567,7 +585,7 @@ void Canvas::pencil() {
 		if (pos1.x != pos2.x || pos1.y != pos2.y) {
 			//txLine(pos1.x, pos1.y, pos2.x, pos2.y);
 
-			draw_line(pos1, pos2, size_);
+			draw_line(pos1, pos2, size_, color_number);
 
 			pos1.x = pos2.x;
 			pos1.y = pos2.y;
@@ -579,7 +597,7 @@ void Canvas::pencil() {
 void Canvas::spray() {
 	double R = MAX(size_ * 1. / 20, 1);
 
-	set_color(R);
+	//set_color(R);
 
 	while (txMouseButtons() == 1) {
 		int dist = 0 + rand() % (size_ / 2 - 0), angle = 0 + rand() % (360 - 0);
@@ -593,29 +611,73 @@ void Canvas::spray() {
 	}
 }
 
-void Canvas::fill(COLORREF old_color, POINT pos, POINT prev) {
+bool Canvas::fill(COLORREF old_color, POINT pos, POINT prev) {
+
+	if (txMouseButtons() == 2)
+		return FALSE;
 
 	if (old_color == txGetPixel(pos.x, pos.y) && 
-		pos.x > rect_.left && 
+		pos.x > rect_.left - 1 && 
 		pos.x < rect_.right && 
 		pos.y < rect_.bottom && 
-		pos.y > rect_.top) {
+		pos.y > rect_.top - 1) {
 
 		for (int i = -1; i <= 1; ++i)
 			for (int j = -1; j <= 1; ++j) {
-				//if (prev.x != pixel.x || prev.y != pixel.y)
-				fill(old_color, POINT{ pos.x + i, pos.y + j }, pos);
+				if (!fill(old_color, POINT{ pos.x + i, pos.y + j }, pos))
+					return FALSE;
 
+				/*
 				RgbColor color = { 
 					txExtractColor(((ColorButton*)manager.buttons_[1])->color_, TX_RED),
 					txExtractColor(((ColorButton*)manager.buttons_[1])->color_, TX_GREEN),
 					txExtractColor(((ColorButton*)manager.buttons_[1])->color_, TX_BLUE) };
 
-				//set_pixel(color, rect_, pos);
-				txSetPixel(pos.x, pos.y, RGB((int)color.r, (int)color.g, (int)color.b));
+				set_pixel(color, rect_, pos);
+				*/
+
+				txSetPixel(pos.x, pos.y, ((ColorButton*)manager.buttons_[1])->color_);
 			}
 	}
-	return;
+	return TRUE;
+}
+
+void Canvas::stamp(HDC DC) {
+	HDC temp = txCreateCompatibleDC(
+		((Canvas*)manager.buttons_[0])->rect_.right  - ((Canvas*)manager.buttons_[0])->rect_.left,
+		((Canvas*)manager.buttons_[0])->rect_.bottom - ((Canvas*)manager.buttons_[0])->rect_.top);
+
+	txBitBlt(
+		temp,
+		0,
+		0,
+		((Canvas*)manager.buttons_[0])->rect_.right  - ((Canvas*)manager.buttons_[0])->rect_.left,
+		((Canvas*)manager.buttons_[0])->rect_.bottom - ((Canvas*)manager.buttons_[0])->rect_.top,
+		txDC(),
+		((Canvas*)manager.buttons_[0])->rect_.left,
+		((Canvas*)manager.buttons_[0])->rect_.top);
+
+	while (txMouseButtons() == 1) {
+		POINT pos = txMousePos();
+
+		txBitBlt(
+			DC,
+			0,
+			0,
+			size_,
+			size_,
+			temp,
+			pos.x - size_ / 2 - 20  - ((Canvas*)manager.buttons_[0])->rect_.left,
+			pos.y - size_ / 2 - 20  - ((Canvas*)manager.buttons_[0])->rect_.top);
+
+		txBitBlt(
+			txDC(),
+			pos.x,
+			pos.y,
+			((Canvas*)manager.buttons_[0])->size_,
+			((Canvas*)manager.buttons_[0])->size_,
+			DC);
+	}
 }
 
 //=======================================================//
@@ -734,8 +796,8 @@ void Palette::pressed() {
 
 //=======================================================//
 
-void set_color(size_t size) {
-	COLORREF color = ((ColorButton*)manager.buttons_[1])->color_;
+void set_color(size_t size, size_t color_number) {
+	COLORREF color = ((ColorButton*)manager.buttons_[color_number])->color_;
 
 	txSetColor(color, size);
 	txSetFillColor(color);
@@ -779,8 +841,8 @@ void draw_circle(POINT pos, double R) {
 		((Canvas*)manager.buttons_[0])->rect_.right  - ((Canvas*)manager.buttons_[0])->rect_.left,
 		((Canvas*)manager.buttons_[0])->rect_.bottom - ((Canvas*)manager.buttons_[0])->rect_.top);
 
-	txSetColor(((ColorButton*)manager.buttons_[1])->color_, R, temp);
-	txSetFillColor(((ColorButton*)manager.buttons_[1])->color_, temp);
+	txSetColor     (((ColorButton*)manager.buttons_[1])->color_, R, temp);
+	txSetFillColor (((ColorButton*)manager.buttons_[1])->color_,    temp);
 
 	txBitBlt(
 		temp,
@@ -812,13 +874,13 @@ void draw_circle(POINT pos, double R) {
 	txDeleteDC(temp);
 }
 
-void draw_line(POINT pos1, POINT pos2, double R) {
+void draw_line(POINT pos1, POINT pos2, double R, size_t color_number) {
 	HDC temp = txCreateCompatibleDC(
-		((Canvas*)manager.buttons_[0])->rect_.right - ((Canvas*)manager.buttons_[0])->rect_.left,
+		((Canvas*)manager.buttons_[0])->rect_.right  - ((Canvas*)manager.buttons_[0])->rect_.left,
 		((Canvas*)manager.buttons_[0])->rect_.bottom - ((Canvas*)manager.buttons_[0])->rect_.top);
 
-	txSetColor     (((ColorButton*)manager.buttons_[1])->color_, R, temp);
-	txSetFillColor (((ColorButton*)manager.buttons_[1])->color_,    temp);
+	txSetColor     (((ColorButton*)manager.buttons_[color_number])->color_, R, temp);
+	txSetFillColor (((ColorButton*)manager.buttons_[color_number])->color_,    temp);
 
 	txBitBlt(
 		temp,
@@ -841,7 +903,7 @@ void draw_line(POINT pos1, POINT pos2, double R) {
 		txDC(),
 		((Canvas*)manager.buttons_[0])->rect_.left,
 		((Canvas*)manager.buttons_[0])->rect_.top,
-		((Canvas*)manager.buttons_[0])->rect_.right - ((Canvas*)manager.buttons_[0])->rect_.left,
+		((Canvas*)manager.buttons_[0])->rect_.right  - ((Canvas*)manager.buttons_[0])->rect_.left,
 		((Canvas*)manager.buttons_[0])->rect_.bottom - ((Canvas*)manager.buttons_[0])->rect_.top,
 		temp,
 		0,
@@ -850,14 +912,17 @@ void draw_line(POINT pos1, POINT pos2, double R) {
 	txDeleteDC(temp);
 }
 
+//=======================================================//
+
 void clear() {
 	manager.buttons_[0]->draw_button(); 
+
+	while (txMouseButtons() == 1)
+		txSleep(100);
 }
 
 void close() {
 	txDisableAutoPause();
-
-	txDeleteDC(temp_HDC);
 
 	exit(0);
 }
@@ -879,6 +944,9 @@ void load() {
 		load);
 
 	txDeleteDC(load);
+
+	while (txMouseButtons() == 1)
+		txSleep(100);
 }
 
 void save() {
@@ -899,6 +967,9 @@ void save() {
 	txSaveImage("Image.bmp", save);
 
 	txDeleteDC(save);
+
+	while (txMouseButtons() == 1)
+		txSleep(100);
 }
 
 void save_and_close() {
@@ -906,6 +977,8 @@ void save_and_close() {
 
 	close();
 }
+
+//=======================================================//
 
 void pencil_mode() {
 	manager.buttons_[0]->mode_ = 1;
@@ -918,6 +991,16 @@ void spray_mode() {
 void fill_mode() {
 	manager.buttons_[0]->mode_ = 3;
 }
+
+void stamp_mode() {
+	manager.buttons_[0]->mode_ = 4;
+}
+
+void eraser_mode() {
+	manager.buttons_[0]->mode_ = 5;
+}
+
+//=======================================================//
 
 int main() {
 	srand(time(0));
@@ -934,6 +1017,9 @@ int main() {
 	manager.add      (new PictureButton      (RECT{ 10, 60, 40, 90 },   pencil_mode, txLoadImage("Resources\\Images\\pencil.bmp"), txLoadImage("Resources\\Images\\pencil_pressed.bmp")));
 	manager.add      (new PictureButton      (RECT{ 10, 100, 40, 130 }, spray_mode,  txLoadImage("Resources\\Images\\spray.bmp"),  txLoadImage("Resources\\Images\\spray_pressed.bmp")));
 	manager.add      (new PictureButton      (RECT{ 10, 140, 40, 170 }, fill_mode,   txLoadImage("Resources\\Images\\fill.bmp"),   txLoadImage("Resources\\Images\\fill_pressed.bmp")));
+	manager.add      (new PictureButton      (RECT{ 10, 180, 40, 210 }, stamp_mode,  txLoadImage("Resources\\Images\\stamp.bmp"),  txLoadImage("Resources\\Images\\stamp_pressed.bmp")));
+	manager.add      (new PictureButton      (RECT{ 10, 220, 40, 250 }, eraser_mode, txLoadImage("Resources\\Images\\eraser.bmp"), txLoadImage("Resources\\Images\\eraser_pressed.bmp")));
+
 	manager.add      (new Palette            (RECT{ win_width - 276, win_height - 276, win_width - 20, win_height - 20 }));
 
 	manager.add      (new MenuButton("Файл",              RECT{ 0, 0, 50, 20 }));
@@ -954,7 +1040,5 @@ int main() {
 	
 	manager.run(NULL);
 
-	txDisableAutoPause();
-
-	txDeleteDC(temp_HDC);
+	close();
 }
