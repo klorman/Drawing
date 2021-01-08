@@ -592,18 +592,7 @@ void Canvas::pencil(size_t color_number) {
 
 		pos2 = txMousePos();
 
-		if (!is_mouse_on_button()) {
-			while (txMouseButtons() == 1)
-				if (is_mouse_on_button())
-					break;
-
-			pos1 = txMousePos();
-
-			continue;
-		}
-
 		if (pos1.x != pos2.x || pos1.y != pos2.y) {
-			//txLine(pos1.x, pos1.y, pos2.x, pos2.y);
 
 			draw_line(pos1, pos2, size_, color_number);
 
@@ -617,15 +606,12 @@ void Canvas::pencil(size_t color_number) {
 void Canvas::spray() {
 	double R = MAX(size_ * 1. / 20, 1);
 
-	//set_color(R);
-
 	while (txMouseButtons() == 1) {
 		int dist = 0 + rand() % (size_ / 2 - 0), angle = 0 + rand() % (360 - 0);
 
 		long x = txMouseX() + dist * cos(angle), y = txMouseY() + dist * sin(angle);
 
-		if (x - R > rect_.left && x + R < rect_.right && y - R > rect_.top && y + R < rect_.bottom)
-			draw_circle(POINT{ x, y }, R);
+		draw_circle(POINT{ x, y }, R);
 
 		Sleep(8);
 	}
@@ -646,15 +632,6 @@ bool Canvas::fill(COLORREF old_color, POINT pos) {
 			for (int j = -1; j <= 1; ++j) {
 				if (!fill(old_color, POINT{ pos.x + i, pos.y + j }))
 					return FALSE;
-
-				/*
-				RgbColor color = { 
-					txExtractColor(((ColorButton*)manager.buttons_[1])->color_, TX_RED),
-					txExtractColor(((ColorButton*)manager.buttons_[1])->color_, TX_GREEN),
-					txExtractColor(((ColorButton*)manager.buttons_[1])->color_, TX_BLUE) };
-
-				set_pixel(color, rect_, pos);
-				*/
 
 				txSetPixel(pos.x, pos.y, ((ColorButton*)manager.buttons_[1])->color_);
 			}
@@ -803,20 +780,6 @@ void Palette::pressed() {
 		manager.buttons_[1]->draw_button();
 
 		txEnd();
-
-		/*
-		if (txExtractColor(txRGB2HSL(((ColorButton*)manager.buttons_[1])->color_), TX_LIGHTNESS) >= 54) 
-			txSetColor(TX_BLACK);
-
-		else
-			txSetColor(TX_WHITE);
-
-		txSetFillColor(TX_NULL);
-		txCircle(point.x, point.y, 5);
-
-		txSleep(100);
-		*/
-		
 	}
 }
 
@@ -839,29 +802,6 @@ void set_pixel(RGB_t rgb, RECT rect, POINT pos) {
 
 //=======================================================//
 
-/*
-void Canvas::draw_circle(POINT pos) {
-	for (int x = MAX(pos.x - size_ / 2, rect_.left) + 1; x < MIN(pos.x + size_ / 2, rect_.right) - 1; x++) {
-		for (int y = MAX(pos.y - size_ / 2, rect_.top) + 2; y < MIN(pos.y + size_ / 2, rect_.bottom); y++) {
-			if (sqrt(pow(x - pos.x, 2) + pow(y - pos.y, 2)) <= size_ / 2)
-				set_pixel(RgbColor{ 255, 0, 0 }, rect_, POINT{ x, y });
-				//txSetPixel(x, y, TX_RED);	
-		}
-	}
-}
-
-void Canvas::draw_line(POINT pos1, POINT pos2) {
-	long k = 999, b = 0;
-	if (pos1.x != pos2.x)
-		k = (pos1.y - pos2.y) / (pos1.x - pos2.x);
-
-	b = pos1.y - pos1.x * k;
-
-	for (int x = MIN(pos1.x, pos2.x); x < MAX(pos1.x, pos2.x); x++)
-		draw_circle(POINT{ x, k * x + b });
-}
-*/
-
 void draw_circle(POINT pos, double R) {
 	HDC temp = txCreateCompatibleDC(
 		((Canvas*)manager.buttons_[0])->rect_.right  - ((Canvas*)manager.buttons_[0])->rect_.left,
@@ -879,7 +819,7 @@ void draw_circle(POINT pos, double R) {
 		txDC(),
 		((Canvas*)manager.buttons_[0])->rect_.left,
 		((Canvas*)manager.buttons_[0])->rect_.top);
-
+		
 	txEllipse(
 		(int)(pos.x - R - ((Canvas*)manager.buttons_[0])->rect_.left),
 		(int)(pos.y - R - ((Canvas*)manager.buttons_[0])->rect_.top),
@@ -1043,28 +983,28 @@ void hist_3() {
 //=======================================================//
 
 void add_buttons() {
-	manager.add(new Canvas(RECT{ 50, 50, win_width - 296, win_height - 20 }));
-	manager.add(new ColorButton(RECT{ 7,  win_height - 56, 32, win_height - 31 }, TX_BLACK));
-	manager.add(new ColorButton(RECT{ 18, win_height - 45, 43, win_height - 20 }, TX_WHITE));
+	manager.add(new Canvas        (RECT{ 50, 50, win_width - 296, win_height - 20 }));
+	manager.add(new ColorButton   (RECT{ 7,  win_height - 56, 32, win_height - 31 }, TX_BLACK));
+	manager.add(new ColorButton   (RECT{ 18, win_height - 45, 43, win_height - 20 }, TX_WHITE));
 
-	manager.add(new PictureButton(RECT{ 10, 60, 40, 90 }, pencil_mode, txLoadImage("Resources\\Images\\pencil.bmp"), txLoadImage("Resources\\Images\\pencil_pressed.bmp")));
-	manager.add(new PictureButton(RECT{ 10, 100, 40, 130 }, spray_mode, txLoadImage("Resources\\Images\\spray.bmp"), txLoadImage("Resources\\Images\\spray_pressed.bmp")));
-	manager.add(new PictureButton(RECT{ 10, 140, 40, 170 }, fill_mode, txLoadImage("Resources\\Images\\fill.bmp"), txLoadImage("Resources\\Images\\fill_pressed.bmp")));
-	manager.add(new PictureButton(RECT{ 10, 180, 40, 210 }, stamp_mode, txLoadImage("Resources\\Images\\stamp.bmp"), txLoadImage("Resources\\Images\\stamp_pressed.bmp")));
-	manager.add(new PictureButton(RECT{ 10, 220, 40, 250 }, eraser_mode, txLoadImage("Resources\\Images\\eraser.bmp"), txLoadImage("Resources\\Images\\eraser_pressed.bmp")));
+	manager.add(new PictureButton (RECT{ 10, 60, 40, 90 },   pencil_mode, txLoadImage("Resources\\Images\\pencil.bmp"), txLoadImage("Resources\\Images\\pencil_pressed.bmp")));
+	manager.add(new PictureButton (RECT{ 10, 100, 40, 130 }, spray_mode,  txLoadImage("Resources\\Images\\spray.bmp"),  txLoadImage("Resources\\Images\\spray_pressed.bmp")));
+	manager.add(new PictureButton (RECT{ 10, 140, 40, 170 }, fill_mode,   txLoadImage("Resources\\Images\\fill.bmp"),   txLoadImage("Resources\\Images\\fill_pressed.bmp")));
+	manager.add(new PictureButton (RECT{ 10, 180, 40, 210 }, stamp_mode,  txLoadImage("Resources\\Images\\stamp.bmp"),  txLoadImage("Resources\\Images\\stamp_pressed.bmp")));
+	manager.add(new PictureButton (RECT{ 10, 220, 40, 250 }, eraser_mode, txLoadImage("Resources\\Images\\eraser.bmp"), txLoadImage("Resources\\Images\\eraser_pressed.bmp")));
 
-	manager.add(new Palette(RECT{ win_width - 276, win_height - 276, win_width - 20, win_height - 20 }));
+	manager.add(new Palette       (RECT{ win_width - 276, win_height - 276, win_width - 20, win_height - 20 }));
 
-	manager.add(new MenuButton("Файл", RECT{ 0, 0, 50, 20 }));
+	manager.add(new MenuButton    ("Файл", RECT{ 0, 0, 50, 20 }));
 
-	menu_manager.add(new Button(NULL, RECT{ 0, 0, 0, 0 }, NULL));
-	menu_manager.add(new RectButton("Очистить", RECT{ 0, 20, 150, 40 }, clear));
-	menu_manager.add(new RectButton("Загрузить", RECT{ 0, 40, 150, 60 }, load));
-	menu_manager.add(new RectButton("Сохранить", RECT{ 0, 60, 150, 80 }, save));
-	menu_manager.add(new RectButton("Сохранить и выйти", RECT{ 0, 80, 150, 100 }, save_and_close));
-	menu_manager.add(new RectButton("Выход", RECT{ 0, 100, 150, 120 }, close));
+	menu_manager.add(new Button     (NULL,                RECT{ 0, 0, 0, 0 },       NULL));
+	menu_manager.add(new RectButton ("Очистить",          RECT{ 0, 20, 150, 40 },   clear));
+	menu_manager.add(new RectButton ("Загрузить",         RECT{ 0, 40, 150, 60 },   load));
+	menu_manager.add(new RectButton ("Сохранить",         RECT{ 0, 60, 150, 80 },   save));
+	menu_manager.add(new RectButton ("Сохранить и выйти", RECT{ 0, 80, 150, 100 },  save_and_close));
+	menu_manager.add(new RectButton ("Выход",             RECT{ 0, 100, 150, 120 }, close));
 
-	menu_manager.add(new Button(NULL, RECT{ 1, 1, win_width - 3, win_height - 3 }, NULL));
+	menu_manager.add(new Button     (NULL, RECT{ 1, 1, win_width - 3, win_height - 3 }, NULL));
 
 	/*
 	history.create_DCs();
